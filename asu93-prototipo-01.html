@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#101820">
+<title>ASU 93 — Prototipo 0.1</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; width:100%; height:100%; overflow:hidden; background:#101820; font-family:Arial,sans-serif; touch-action:none; }
+  canvas { display:block; width:100%; height:100%; }
+  #hud { position:fixed; inset:0; pointer-events:none; color:white; }
+  #brand { position:absolute; top:14px; left:14px; padding:9px 12px; border:1px solid #ffffff35; border-radius:12px; background:#101820b8; backdrop-filter:blur(8px); }
+  #brand strong { display:block; letter-spacing:2px; font-size:15px; }
+  #brand small { color:#b9c7cf; font-size:9px; letter-spacing:1.5px; }
+  #status { position:absolute; top:14px; right:14px; padding:9px 11px; border-radius:12px; background:#101820b8; border:1px solid #ffffff35; font-size:11px; text-align:right; }
+  #hint { position:absolute; left:50%; top:15px; transform:translateX(-50%); max-width:44vw; text-align:center; color:#dce8e8; font-size:11px; text-shadow:0 2px 4px #000; }
+  #controls { position:absolute; inset:0; pointer-events:none; }
+  #stickBase { position:absolute; left:22px; bottom:24px; width:132px; height:132px; border-radius:50%; background:#07131d77; border:2px solid #ffffff55; pointer-events:auto; touch-action:none; }
+  #stick { position:absolute; width:54px; height:54px; left:37px; top:37px; border-radius:50%; background:#d8f3efcc; border:2px solid white; box-shadow:0 3px 12px #0008; }
+  .action { pointer-events:auto; position:absolute; right:22px; bottom:30px; width:76px; height:76px; border-radius:50%; border:2px solid #ffffffa8; background:#e65b8acc; color:white; font-weight:bold; letter-spacing:1px; font-size:11px; box-shadow:0 4px 14px #0008; }
+  #lookHelp { position:absolute; right:20px; bottom:118px; width:105px; color:#ffffffb8; font-size:10px; text-align:center; text-shadow:0 2px 4px #000; }
+  #speed { position:absolute; right:18px; top:75px; font-size:13px; font-weight:bold; color:#fff; text-shadow:0 2px 5px #000; }
+  #start { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; padding:24px; background:linear-gradient(#0b1825dd,#0b1825ee); color:white; z-index:5; }
+  #panel { width:min(440px,100%); padding:25px; border:1px solid #ffffff35; border-radius:22px; background:#172631; box-shadow:0 20px 70px #0009; }
+  #panel h1 { margin:0 0 5px; letter-spacing:4px; font-size:29px; }
+  #panel .sub { color:#8fd0c4; letter-spacing:2px; font-size:10px; margin-bottom:18px; }
+  #panel p { color:#d0dce0; line-height:1.5; font-size:13px; }
+  #panel button { width:100%; padding:15px; border:0; border-radius:12px; background:#e65b8a; color:white; font-weight:bold; letter-spacing:1px; font-size:13px; margin-top:10px; }
+  #panel .tiny { font-size:10px; color:#9eafb7; }
+  @media (max-width:600px) { #hint { top:68px; max-width:70vw; } #stickBase { width:120px;height:120px;left:16px;bottom:18px;} #stick {left:33px;top:33px;} .action{right:17px;bottom:22px;width:70px;height:70px;} }
+</style>
+</head>
+<body>
+<div id="start">
+  <div id="panel">
+    <h1>ASU 93</h1>
+    <div class="sub">PROTOTIPO 0.1 · PRIMER BARRIO</div>
+    <p>Un primer recorrido 3D por una ciudad inspirada en Asunción y Limpio. Caminá, explorá y probá el auto.</p>
+    <p><b>Controles:</b> joystick para moverte. Arrastrá el lado derecho de la pantalla para girar la cámara. Acercate al auto y tocá ACCIÓN para subirte o bajarte.</p>
+    <button id="play">ENTRAR A LA CIUDAD</button>
+    <p class="tiny">Prototipo experimental. Recomendado en horizontal y con el navegador actualizado.</p>
+  </div>
+</div>
+<div id="hud">
+  <div id="brand"><strong>ASU 93</strong><small>PARAGUAY · OPEN WORLD</small></div>
+  <div id="status">A PIE<br><span style="color:#8fd0c4">BARRIO 01</span></div>
+  <div id="hint">Explorá el barrio</div>
+  <div id="speed"></div>
+  <div id="controls">
+    <div id="stickBase"><div id="stick"></div></div>
+    <div id="lookHelp">Arrastrá acá para mirar</div>
+    <button class="action" id="action">ACCIÓN</button>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9bc6d0);
+scene.fog = new THREE.Fog(0x9bc6d0, 38, 145);
+
+const camera = new THREE.PerspectiveCamera(65, innerWidth/innerHeight, 0.1, 250);
+const renderer = new THREE.WebGLRenderer({antialias:false, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = false;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xdff4ff, 0x5b634b, 2.0));
+const sun = new THREE.DirectionalLight(0xffe0b5, 2.2);
+sun.position.set(-35, 65, 30); scene.add(sun);
+
+const mat = (color, roughness=1) => new THREE.MeshStandardMaterial({color, roughness});
+const groundMat = mat(0x7b936d), roadMat = mat(0x343b40), sidewalkMat = mat(0xb6b1a1);
+const whiteMat = mat(0xe9e3d4), darkMat = mat(0x242b31), glassMat = new THREE.MeshStandardMaterial({color:0x83b8c2, roughness:.35, metalness:.1});
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(220,220), groundMat);
+ground.rotation.x=-Math.PI/2; ground.position.y=-.08; scene.add(ground);
+
+function box(w,h,d,material,x,y,z,parent=scene) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), material);
+  m.position.set(x,y,z); parent.add(m); return m;
+}
+function road(x,z,w,d) {
+  box(w,.08,d,roadMat,x,0,z);
+  // lane markings
+  if (w>d) for(let xx=x-w/2+4; xx<x+w/2-2; xx+=8) box(3,.025,.13,whiteMat,xx,.055,z);
+  else for(let zz=z-d/2+4; zz<z+d/2-2; zz+=8) box(.13,.025,3,whiteMat,x,.055,zz);
+}
+road(0,0,190,13); road(0,-48,190,11); road(0,48,190,11);
+road(-62,0,11,115); road(62,0,11,115);
+road(0,0,12,190); // cross street through center
+
+// sidewalks alongside main roads
+for (const z of [-8,8,-54,-42,42,54]) box(190,.22,2,sidewalkMat,0,.06,z);
+for (const x of [-69,-55,55,69]) box(2,.22,115,sidewalkMat,x,.06,0);
+
+// simple city blocks with varied buildings
+const buildingColors=[0xd6b99a,0xc7c9bd,0xd1a58e,0xb9c6bd,0xe0d4bd,0xaebbc0,0xd4c4aa];
+const buildings=[];
+function building(x,z,w,d,h,colorIndex) {
+  const group=new THREE.Group(); group.position.set(x,0,z); scene.add(group);
+  const body=box(w,h,d,mat(buildingColors[colorIndex%buildingColors.length]),0,h/2,0,group);
+  box(w+0.25,.35,d+0.25,mat(0x77756b),0,h+.16,0,group);
+  // windows facing street
+  const win=mat(0x567984);
+  const rows=Math.max(1,Math.floor(h/3));
+  for(let y=1.6;y<h-0.8;y+=2.7) {
+    for(let xx=-w/2+1.2;xx<w/2-.5;xx+=2.5) {
+      box(.95,1.25,.06,win,xx,y,d/2+.035,group);
+      box(.95,1.25,.06,win,xx,y,-d/2-.035,group);
+    }
+  }
+  buildings.push({x,z,w,d});
+}
+let seed=9; const rnd=()=>{seed=(seed*9301+49297)%233280;return seed/233280;};
+for(let bx=-1;bx<=1;bx++) for(let bz=-1;bz<=1;bz++) {
+  const cx=bx*62, cz=bz*48;
+  for(let i=0;i<4;i++) {
+    const x=cx+(i%2?17:-17), z=cz+(i<2?-13:13);
+    if(Math.abs(x)<12 && Math.abs(z)<14) continue;
+    building(x,z,12+rnd()*7,11+rnd()*6,7+rnd()*15,Math.floor(rnd()*buildingColors.length));
+  }
+}
+
+// trees and street lamps
+function tree(x,z) {
+  const trunk=mat(0x755039), leaves=mat(0x28634c);
+  const t=new THREE.Mesh(new THREE.CylinderGeometry(.22,.32,2.6,6),trunk); t.position.set(x,1.3,z); scene.add(t);
+  const crown=new THREE.Mesh(new THREE.SphereGeometry(1.55,7,6),leaves); crown.position.set(x,3.2,z); scene.add(crown);
+}
+for(let x=-85;x<=85;x+=14){ tree(x,-11); tree(x,11); }
+for(let z=-47;z<=47;z+=15){ tree(-74,z); tree(74,z); }
+
+// small plaza
+box(25,.18,22,mat(0xb2aa8e),-31,.02,-29);
+for(let x=-39;x<=-23;x+=8) for(let z=-36;z<=-22;z+=7) tree(x,z);
+
+// simple character made from shapes
+const player=new THREE.Group(); scene.add(player); player.position.set(-7,0,18);
+const skin=mat(0x9b694d), shirt=mat(0x263e58), pants=mat(0x252b35), shoe=mat(0x17191b);
+const torso= new THREE.Mesh(new THREE.BoxGeometry(.75,1,.38),shirt); torso.position.y=1.45; player.add(torso);
+const head=new THREE.Mesh(new THREE.SphereGeometry(.27,10,8),skin); head.position.y=2.15; player.add(head);
+const hair=new THREE.Mesh(new THREE.SphereGeometry(.28,10,6,0,Math.PI*2,0,Math.PI/2),mat(0x211d1a)); hair.position.y=2.28; player.add(hair);
+const legs=[];
+for(const x of [-.2,.2]) { const l=new THREE.Mesh(new THREE.BoxGeometry(.25,.75,.29),pants); l.position.set(x,.55,0); player.add(l); legs.push(l); }
+for(const x of [-.48,.48]) { const a=new THREE.Mesh(new THREE.BoxGeometry(.2,.72,.22),skin); a.position.set(x,1.45,0); player.add(a); }
+
+// car
+const car=new THREE.Group(); scene.add(car); car.position.set(5,0,17); car.rotation.y=-Math.PI/2;
+const carBody=mat(0x315d83), tireMat=mat(0x17191b);
+box(2.1,.65,4,carBody,0,.75,0,car);
+box(1.65,.72,2.0,glassMat,0,1.35,-.15,car);
+box(1.85,.18,1.0,carBody,0,1.0,1.45,car);
+for(const x of [-1,1]) for(const z of [-1.35,1.35]) {
+ const wheel=new THREE.Mesh(new THREE.CylinderGeometry(.42,.42,.22,12),tireMat);
+ wheel.rotation.z=Math.PI/2; wheel.position.set(x, .43,z); car.add(wheel);
+}
+const headlight=mat(0xf4e5ae); box(.5,.18,.08,headlight,-.62,.78,2.02,car); box(.5,.18,.08,headlight,.62,.78,2.02,car);
+
+let inCar=false, speed=0, playerYaw=0, camYaw=0, camPitch=.28;
+const stick={x:0,y:0,active:false};
+const hint=document.getElementById('hint'), status=document.getElementById('status'), speedEl=document.getElementById('speed');
+function setHint(t){hint.textContent=t;}
+function nearCar(){return player.position.distanceTo(car.position)<4.5;}
+document.getElementById('action').addEventListener('click',()=>{
+ if(!inCar && nearCar()){inCar=true; speed=0; status.innerHTML='CONDUCIENDO<br><span style="color:#8fd0c4">VEHÍCULO</span>'; setHint('Estás conduciendo. Joystick: acelerar y girar.');}
+ else if(inCar){inCar=false; speed=0; player.position.copy(car.position).add(new THREE.Vector3(2,0,0)); playerYaw=car.rotation.y; status.innerHTML='A PIE<br><span style="color:#8fd0c4">BARRIO 01</span>'; setHint('Bajaste del auto. Seguí explorando.');}
+ else setHint('Acercate al auto azul para entrar.');
+});
+
+// joystick
+const base=document.getElementById('stickBase'), knob=document.getElementById('stick');
+let stickPointer=null;
+function updateStick(e){
+ const r=base.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
+ let dx=e.clientX-cx, dy=e.clientY-cy, max=42, len=Math.hypot(dx,dy);
+ if(len>max){dx=dx/len*max;dy=dy/len*max;}
+ knob.style.transform=`translate(${dx}px,${dy}px)`;
+ stick.x=dx/max; stick.y=dy/max;
+}
+base.addEventListener('pointerdown',e=>{stickPointer=e.pointerId;base.setPointerCapture(e.pointerId);stick.active=true;updateStick(e);});
+base.addEventListener('pointermove',e=>{if(e.pointerId===stickPointer)updateStick(e);});
+function resetStick(){stickPointer=null;stick.active=false;stick.x=0;stick.y=0;knob.style.transform='translate(0px,0px)';}
+base.addEventListener('pointerup',resetStick); base.addEventListener('pointercancel',resetStick);
+
+// drag right half to rotate camera
+let lookPointer=null,lastX=0,lastY=0;
+renderer.domElement.addEventListener('pointerdown',e=>{if(e.clientX>innerWidth*.42){lookPointer=e.pointerId;lastX=e.clientX;lastY=e.clientY;renderer.domElement.setPointerCapture(e.pointerId);}});
+renderer.domElement.addEventListener('pointermove',e=>{if(e.pointerId===lookPointer){camYaw-=(e.clientX-lastX)*.006;camPitch=THREE.MathUtils.clamp(camPitch+(e.clientY-lastY)*.003,-.05,.85);lastX=e.clientX;lastY=e.clientY;}});
+renderer.domElement.addEventListener('pointerup',()=>lookPointer=null); renderer.domElement.addEventListener('pointercancel',()=>lookPointer=null);
+
+const clock=new THREE.Clock();
+function update(dt){
+ if(inCar){
+   const throttle=-stick.y;
+   speed += throttle*12*dt;
+   speed *= Math.pow(.985,dt*60);
+   speed=THREE.MathUtils.clamp(speed,-5,17);
+   car.rotation.y -= stick.x*speed*.035*dt*8;
+   car.position.x += Math.sin(car.rotation.y)*speed*dt;
+   car.position.z += Math.cos(car.rotation.y)*speed*dt;
+   car.position.x=THREE.MathUtils.clamp(car.position.x,-88,88);
+   car.position.z=THREE.MathUtils.clamp(car.position.z,-88,88);
+   speedEl.textContent=Math.round(Math.abs(speed)*4)+' km/h';
+   setHint('Joystick arriba: acelerar · abajo: reversa · izquierda/derecha: girar');
+ } else {
+   const forward=-stick.y, side=stick.x;
+   const moving=Math.abs(forward)+Math.abs(side)>.08;
+   if(moving){
+     const angle=camYaw;
+     const dx=(Math.sin(angle)*forward + Math.cos(angle)*side);
+     const dz=(Math.cos(angle)*forward - Math.sin(angle)*side);
+     player.position.x += dx*7*dt;
+     player.position.z += dz*7*dt;
+     playerYaw=Math.atan2(dx,dz);
+     player.rotation.y=playerYaw;
+     legs[0].rotation.x=Math.sin(clock.elapsedTime*10)*.45;
+     legs[1].rotation.x=-Math.sin(clock.elapsedTime*10)*.45;
+   } else { legs[0].rotation.x=0; legs[1].rotation.x=0; }
+   player.position.x=THREE.MathUtils.clamp(player.position.x,-90,90);
+   player.position.z=THREE.MathUtils.clamp(player.position.z,-90,90);
+   speedEl.textContent='';
+   setHint(nearCar()?'Auto azul cerca: tocá ACCIÓN para subirte.':'Joystick: caminar · Arrastrá la pantalla: mirar');
+ }
+}
+
+function animate(){
+ requestAnimationFrame(animate);
+ const dt=Math.min(clock.getDelta(),.04);
+ update(dt);
+ const target=inCar?car.position:player.position;
+ const yaw=camYaw+(inCar?car.rotation.y:playerYaw)*.18;
+ const distance=inCar?8:7;
+ const horizontal=Math.cos(camPitch)*distance;
+ camera.position.set(
+   target.x-Math.sin(yaw)*horizontal,
+   target.y+(inCar?3.4:2.7)+Math.sin(camPitch)*distance,
+   target.z-Math.cos(yaw)*horizontal
+ );
+ camera.lookAt(target.x,target.y+(inCar?1.1:1.35),target.z);
+ renderer.render(scene,camera);
+}
+animate();
+
+document.getElementById('play').addEventListener('click',()=>{document.getElementById('start').style.display='none';});
+addEventListener('resize',()=>{
+ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+ renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>
